@@ -35,8 +35,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
               alignment: Alignment.centerLeft,
               child: SvgPicture.asset(
                 'assets/logo-catolica-sc.svg',
-                width: 80,
-                height: 40,
+                width: 60,
+                height: 30,
               ),
             ),
 
@@ -45,7 +45,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
               child: Text(
                 "Auto-chamada",
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.normal,
                 ),
               ),
