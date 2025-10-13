@@ -28,15 +28,15 @@ class _HomeScreenState extends State<HomeScreen> {
               alignment: Alignment.centerLeft,
               child: SvgPicture.asset(
                 'assets/logo-catolica-sc.svg',
-                width: 80,
-                height: 40,
+                width: 60,
+                height: 30,
               ),
             ),
             const Center(
               child: Text(
                 "Auto-chamada",
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.normal,
                 ),
               ),
@@ -153,10 +153,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
 
                     if (result == 'logout') {
-                      print("Usuário deslogou");
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Logout realizado!")),
                       );
+                      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
                     }
                   },
                   child: Container(
