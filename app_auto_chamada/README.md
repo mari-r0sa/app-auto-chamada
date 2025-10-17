@@ -1,16 +1,9 @@
 # app_automatizar_chamada
 
-A new Flutter project.
+Este aplicativo tem como objetivo realizar a chamada de forma automática, sem interferência do professor.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Para testar
+Para testar em diferentes dispositivos, substitua o baseUrl em lib/services/api_service.dart por:
+* *Na web*: localhost
+* *Emulador Android*: 10.0.2.2
+* *Celular físico*: IP da máquina

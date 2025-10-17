@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/custom_appbar.dart';
+import '../widgets/custom_bottom_bar.dart';
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -9,10 +11,6 @@ class ConfigScreen extends StatefulWidget {
 }
 
 class _ConfigScreenState extends State<ConfigScreen> {
-  // Key para obter a posição global do ícone do usuário
-  final GlobalKey _userIconKey = GlobalKey();
-
-  static const primaryColor = Color(0xFF9B1536);
   static const secondaryColor = Color(0xFFD9D9D9);
 
   // "Mock" de tipo de usuário para testar enquanto a API não fica pronta
@@ -24,34 +22,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
     return Scaffold(
       
       // ---------- APPBAR ----------
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        automaticallyImplyLeading: false, // Remove botão de "voltar" padrão
-        title: Stack( // Permite colocar logo + título por cima da appbar
-          alignment: Alignment.center,
-          children: [
-            // logo católica
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SvgPicture.asset(
-                'assets/logo-catolica-sc.svg',
-                width: 60,
-                height: 30,
-              ),
-            ),
-
-            // título do app
-            const Center(
-              child: Text(
-                "Auto-chamada",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ),
-          ],
-        ),
+      appBar: const CustomAppBar(
+        title: "Auto-chamada",
       ),
 
       // ---------- CORPO DO APP ----------
@@ -156,86 +128,20 @@ class _ConfigScreenState extends State<ConfigScreen> {
       ),
 
       // ---------- BARRA INFERIOR ----------
-      bottomNavigationBar: BottomAppBar(
-        color: primaryColor,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // User Icon
-              Builder(
-                builder: (context) => GestureDetector(
-                  onTapDown: (details) async {
-                    final RenderBox overlay =
-                        Overlay.of(context)!.context.findRenderObject() as RenderBox;
-
-                    if (_userIconKey.currentContext == null) return;
-                    final RenderBox iconBox =
-                        _userIconKey.currentContext!.findRenderObject() as RenderBox;
-                    final Offset iconPosition = iconBox.localToGlobal(Offset.zero);
-                    final Size iconSize = iconBox.size;
-                    final Rect iconRect = iconPosition & iconSize;
-
-                    final result = await showMenu<String>(
-                      context: context,
-                      position: RelativeRect.fromRect(
-                        iconRect,
-                        Offset.zero & overlay.size,
-                      ),
-                      items: [
-                        const PopupMenuItem(
-                          value: 'logout',
-                          child: Row(
-                            children: [
-                              Icon(Icons.logout, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text('Sair', style: TextStyle(color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ],
-                      elevation: 8,
-                      color: primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    );
-
-                    if (result == 'logout') {
-                      print("Usuário deslogou");
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Logout realizado!")),
-                      );
-                    }
-                  },
-                  child: Container(
-                    key: _userIconKey,
-                    padding: const EdgeInsets.all(4.0),
-                    child: const Icon(Icons.person, color: Colors.white),
-                  ),
-                ),
-              ),
-
-              // Home Icon
-              IconButton(
-                icon: const Icon(Icons.home, color: Colors.white),
-                onPressed: () {
-                  // Importante: usar pushReplacement para não empilhar telas
-                  Navigator.pushReplacementNamed(context, '/home');
-                },
-              ),
-
-              // Config Icon
-              IconButton(
-                icon: const Icon(Icons.settings, color: Colors.white),
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/config');
-                },
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: CustomBottomBar(
+        onLogout: () async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('jwt_token'); // limpa token
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        },
+        onHome: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Já está na HomeScreen")),
+          );
+        },
+        onConfig: () {
+          Navigator.pushReplacementNamed(context, '/config');
+        },
       ),
     );
   }

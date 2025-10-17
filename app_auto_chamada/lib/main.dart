@@ -1,4 +1,3 @@
-import 'package:app_automatizar_chamada/screens/login.dart';
 import 'package:flutter/material.dart';
 import 'screens/home.dart';
 import 'screens/config.dart';

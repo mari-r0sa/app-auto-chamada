@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import '../widgets/custom_appbar.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,44 +14,18 @@ class _LoginScreenState extends State<LoginScreen> {
   static const primaryColor = Color(0xFF9B1536);
   static const secondaryColor = Color(0xFFD9D9D9);
 
+  final TextEditingController nomeController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController senhaController = TextEditingController();
   final TextEditingController confirmarSenhaController = TextEditingController();
 
-  bool isLoginMode = true; // controla se está em modo login ou cadastro
+  bool isLoginMode = true;
+  bool isLoading = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ---------- APPBAR ----------
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        automaticallyImplyLeading: false,
-        title: Stack(
-          alignment: Alignment.center,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SvgPicture.asset(
-                'assets/logo-catolica-sc.svg',
-                width: 60,
-                height: 30,
-              ),
-            ),
-            const Center(
-              child: Text(
-                "Auto-chamada",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      // ---------- CORPO ----------
+      appBar: const CustomAppBar(title: "Auto-chamada"),
       body: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -57,10 +33,9 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ----------- CARD DE LOGIN / CADASTRO -----------
                 SizedBox(
                   height: isLoginMode
-                      ? MediaQuery.of(context).size.height * 0.7
+                      ? MediaQuery.of(context).size.height * 0.6
                       : MediaQuery.of(context).size.height * 0.8,
                   child: Card(
                     shape: RoundedRectangleBorder(
@@ -75,23 +50,41 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Ícone
-                          const Icon(
-                            Icons.person,
-                            size: 130,
-                            color: primaryColor,
-                          ),
+                          const Icon(Icons.person, size: 130, color: primaryColor),
                           const SizedBox(height: 40),
+
+                          // Campo Nome (apenas no cadastro)
+                          if (!isLoginMode) ...[
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                "Nome",
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: nomeController,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: secondaryColor,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 14),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
 
                           // Campo E-mail
                           const Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
                               "E-mail",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -104,11 +97,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide.none,
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 14),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                             ),
                           ),
-
                           const SizedBox(height: 20),
 
                           // Campo Senha
@@ -116,10 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               "Senha",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -133,22 +122,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide.none,
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 14),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                             ),
                           ),
 
-                          // Campo Confirmar Senha (apenas no modo cadastro)
+                          // Campo Confirmar Senha (apenas no cadastro)
                           if (!isLoginMode) ...[
                             const SizedBox(height: 20),
                             const Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
                                 "Confirmar senha",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -181,44 +167,103 @@ class _LoginScreenState extends State<LoginScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              onPressed: () {
+                              onPressed: isLoading ? null : () async {
+                                setState(() => isLoading = true);
+
                                 if (isLoginMode) {
-                                  print("Fazer login");
-                                  Navigator.pushReplacementNamed(
-                                      context, '/home');
-                                } else {
-                                  print("Cadastrar usuário");
-                                  // Aqui você poderia validar as senhas e salvar o usuário
-                                  if (senhaController.text !=
-                                      confirmarSenhaController.text) {
+                                  // LOGIN
+                                  try {
+                                    final response = await ApiService.login(
+                                      emailController.text.trim(),
+                                      senhaController.text.trim(),
+                                    );
+
+                                    final token = response['token'];
+
+                                    if (token != null) {
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setString('jwt_token', token);
+
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Login realizado com sucesso!"),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+
+                                      Navigator.pushReplacementNamed(context, '/home');
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Credenciais inválidas."),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content:
-                                            Text("As senhas não coincidem."),
+                                      SnackBar(
+                                        content: Text("Erro ao conectar: $e"),
                                         backgroundColor: Colors.red,
                                       ),
                                     );
+                                  }
+                                } else {
+                                  // CADASTRO
+                                  if (senhaController.text != confirmarSenhaController.text) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("As senhas não coincidem."),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    setState(() => isLoading = false);
                                     return;
                                   }
-                                  setState(() {
-                                    isLoginMode = true; // volta pro login
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Cadastro realizado!"),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
+
+                                  try {
+                                    await ApiService.cadastrar(
+                                      nomeController.text.trim(),
+                                      emailController.text.trim(),
+                                      senhaController.text.trim(),
+                                    );
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Cadastro realizado com sucesso!"),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+
+                                    setState(() {
+                                      isLoginMode = true;
+                                      nomeController.clear();
+                                      emailController.clear();
+                                      senhaController.clear();
+                                      confirmarSenhaController.clear();
+                                    });
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("Erro ao cadastrar: $e"),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
                                 }
+
+                                setState(() => isLoading = false);
                               },
-                              child: Text(
-                                isLoginMode ? "Entrar" : "Cadastrar-se",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              child: isLoading
+                                  ? const CircularProgressIndicator(color: Colors.white)
+                                  : Text(
+                                      isLoginMode ? "Entrar" : "Cadastrar-se",
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                             ),
                           ),
                         ],
@@ -229,11 +274,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 16),
 
-                // ----------- LINK ALTERNAR LOGIN / CADASTRO -----------
+                // Link alternar login / cadastro
                 GestureDetector(
                   onTap: () {
                     setState(() {
                       isLoginMode = !isLoginMode;
+                      nomeController.clear();
+                      emailController.clear();
+                      senhaController.clear();
+                      confirmarSenhaController.clear();
                     });
                   },
                   child: Text(
