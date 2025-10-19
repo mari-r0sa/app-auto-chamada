@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = 'sua_chave_secreta_aqui'; // coloque em .env para produção
 
 // --- LOGIN ---
-router.post('/usuarios/login', async (req, res) => {
+router.post('/login', async (req, res) => {
     const { email, senha } = req.body;
 
     if (!email || !senha)
@@ -36,7 +36,7 @@ router.post('/usuarios/login', async (req, res) => {
 });
 
 // --- CADASTRO ---
-router.post('/usuarios/cadastrar', async (req, res) => {
+router.post('/cadastrar', async (req, res) => {
     const { nome, email, senha } = req.body;
 
     if (!nome || !email || !senha)
