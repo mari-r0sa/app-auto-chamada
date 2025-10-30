@@ -5,13 +5,14 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = 'sua_chave_secreta';
 
-// Configuração de conexão
 const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
     password: '',
     database: 'auto_chamada'
 });
+
+const ZONA_HORARIO = 'America/Sao_Paulo';
 
 const CONFIG_HORARIOS = [
     { rodada: 1, hora_inicio: "19:00", duracao_minutos: 5 },
@@ -28,14 +29,13 @@ const dbManager = {
         return rows;
     },
 
-    // --- LOGIN ---
     async loginAluno(email, senha) {
         const [rows] = await pool.query(
             "SELECT id, nome, email, senha FROM usuario WHERE email = ? AND tipo = 2",
             [email]
         );
 
-        if (rows.length === 0) return null; // usuário não encontrado
+        if (rows.length === 0) return null; 
 
         const usuario = rows[0];
         const senhaValida = await bcrypt.compare(senha, usuario.senha);
@@ -50,7 +50,6 @@ const dbManager = {
         return { token, usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email } };
     },
 
-    // --- CADASTRO ---
     async cadastrarAluno(nome, email, senha) {
         const [rows] = await pool.query(
             "SELECT id FROM usuario WHERE email = ? AND tipo = 2",
@@ -61,36 +60,22 @@ const dbManager = {
         const hashSenha = await bcrypt.hash(senha, 10);
         const [result] = await pool.query(
             "INSERT INTO usuario (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
-            [nome, email, hashSenha, 2]
+            [nome, email, hashSenha, 2] 
         );
 
         return { id: result.insertId, nome, email };
     },
 
-        // Obter usuário pelo e-mail
-    async getUsuarioByEmail(email) {
-        const [rows] = await pool.query(
-            "SELECT id, nome, email, senha FROM usuario WHERE email = ? AND tipo = 2",
-            [email]
-        );
-        return rows[0] || null;
-    },
-
-    // Cadastro de aluno com senha já hash
-    async cadastrarAluno(nome, email, senhaHash) {
-        const [result] = await pool.query(
-            "INSERT INTO usuario (nome, email, senha, tipo) VALUES (?, ?, ?, 2)",
-            [nome, email, senhaHash]
-        );
-        return { id: result.insertId, nome, email };
-    },
-
-
-    // --- Outras funções (chamada, presenca, relatorio) ---
+    
     async iniciarNovaChamada(rodadaNum, duracaoMinutos) {
-        const dataHoraInicio = DateTime.now().setZone('America/Sao_Paulo').toFormat("yyyy-MM-dd HH:mm:ss");
-        const [result] = await pool.query("INSERT INTO chamada (data_hora) VALUES (?)", [dataHoraInicio]);
-        const dataHoraFim = DateTime.fromFormat(dataHoraInicio, "yyyy-MM-dd HH:mm:ss", { zone: 'America/Sao_Paulo' })
+        const dataHoraInicio = DateTime.now().setZone(ZONA_HORARIO).toFormat("yyyy-MM-dd HH:mm:ss");
+        
+        const [result] = await pool.query(
+            "INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", 
+            [dataHoraInicio, rodadaNum]
+        );
+        
+        const dataHoraFim = DateTime.fromFormat(dataHoraInicio, "yyyy-MM-dd HH:mm:ss", { zone: ZONA_HORARIO })
             .plus({ minutes: duracaoMinutos })
             .toFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -104,17 +89,60 @@ const dbManager = {
     },
 
     async getChamadaById(chamadaId) {
-        const [rows] = await pool.query("SELECT id, data_hora FROM chamada WHERE id = ?", [chamadaId]);
+        const [rows] = await pool.query(
+            "SELECT id, data_hora, rodada FROM chamada WHERE id = ?", 
+            [chamadaId]
+        );
         if (rows.length === 0) return null;
 
-        const chamada = rows[0];
+        const chamada = rows[0]; 
+        
         const config = CONFIG_HORARIOS.find(c => c.rodada === chamada.rodada);
         const duracao = config ? config.duracao_minutos : 5;
-        const dataHoraInicio = DateTime.fromSQL(chamada.data_hora, { zone: 'America/Sao_Paulo' });
+        
+        const dataHoraInicio = DateTime.fromSQL(chamada.data_hora, { zone: ZONA_HORARIO });
         const dataHoraFim = dataHoraInicio.plus({ minutes: duracao });
 
         return { ...chamada, data_hora_fim: dataHoraFim };
     },
+
+    async getChamadaAtivaPorRodada(horaInicioString) {
+        const config = CONFIG_HORARIOS.find(c => c.hora_inicio === horaInicioString);
+        if (!config) {
+            console.warn(`Nenhuma config encontrada para a hora: ${horaInicioString}`);
+            return undefined;
+        }
+        const rodadaNum = config.rodada; 
+
+        // Buscar a chamada mais recente para essa rodada
+        const [rows] = await pool.query(
+            `SELECT id, data_hora, rodada FROM chamada
+            WHERE rodada = ?
+            ORDER BY data_hora DESC
+            LIMIT 1`,
+            [rodadaNum]
+        );
+        
+        if (rows.length === 0) return undefined; 
+
+        const chamada = rows[0];
+        const agora = DateTime.now().setZone(ZONA_HORARIO);
+        
+        // --- Verifica se a chamada encontrada está expirada ---
+        const dataHoraInicio = DateTime.fromSQL(chamada.data_hora, { zone: ZONA_HORARIO });
+        const dataHoraFim = dataHoraInicio.plus({ minutes: config.duracao_minutos });
+
+        if (agora > dataHoraFim) {
+            console.log(`Chamada ID ${chamada.id} encontrada, mas expirada.`);
+            return undefined; 
+        }
+
+        return {
+            id: chamada.id,
+            data_hora_fim: dataHoraFim.toISO() 
+        };
+    },
+
 
     async registrarPresenca(alunoId, chamadaId, statusDesc, obs = "") {
         const [statusRows] = await pool.query("SELECT id FROM presenca WHERE descricao = ?", [statusDesc]);
@@ -131,7 +159,7 @@ const dbManager = {
             "INSERT INTO aluno_chamada (aluno, chamada, presenca, obs) VALUES (?, ?, ?, ?)",
             [alunoId, chamadaId, presencaId, obs]
         );
-        return { id_registro: result.insertId, status_presenca: statusDesc };
+        return { id_registro: result.insertId, aluno_id: alunoId, id_chamada: chamadaId, status_presenca: statusDesc };
     },
 
     async getRelatorioDados() {
