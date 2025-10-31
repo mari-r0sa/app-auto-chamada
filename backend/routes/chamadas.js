@@ -3,10 +3,23 @@ const router = express.Router();
 const dbManager = require('../db/db_manager');
 const { DateTime } = require('luxon');
 
-// Rota para o app (home.dart) buscar os horários
 router.get('/configuracao/horarios', (req, res) => {
-    // Retorna a lista de horários do db_manager (ex: [{ rodada: 1, hora_inicio: "19:00", ... }])
     res.json({ horarios: dbManager.getConfigHorarios() });
+});
+
+router.get('/presencas/hoje/:alunoId', async (req, res) => {
+    const { alunoId } = req.params;
+    if (!alunoId) {
+        return res.status(400).json({ erro: "ID do aluno é obrigatório." });
+    }
+    
+    try {
+        const registros = await dbManager.getPresencasHoje(parseInt(alunoId, 10));
+        res.json({ presencas: registros });
+    } catch (err) {
+        console.error("Erro ao buscar presenças de hoje:", err);
+        res.status(500).json({ erro: "Erro ao buscar presenças." });
+    }
 });
 
 router.get('/alunos', async (req, res) => {
@@ -18,19 +31,20 @@ router.get('/alunos', async (req, res) => {
     }
 });
 
-
 router.post('/chamadas/iniciar', async (req, res) => {
     const { rodada: horaInicioString } = req.body;
 
-    // Encontrar a configuração pela string da HORA
     const config = dbManager.getConfigHorarios().find(c => c.hora_inicio === horaInicioString);
     if (!config) {
         return res.status(400).json({ erro: "Rodada (hora) inválida." });
     }
 
-    // Passa o NÚMERO da rodada (ex: 1) e a duração para o dbManager
     try {
-        const chamada = await dbManager.iniciarNovaChamada(config.rodada, config.duracao_minutos);
+        const chamada = await dbManager.iniciarNovaChamada(
+            config.rodada, 
+            config.duracao_minutos,
+            config.hora_inicio // Passa a hora de início programada
+        );
         res.json(chamada);
     } catch (err) {
         console.error("Erro ao iniciar chamada:", err);
@@ -38,28 +52,61 @@ router.post('/chamadas/iniciar', async (req, res) => {
     }
 });
 
-// Rota para o ALUNO registrar a presença
 router.post('/presencas', async (req, res) => {
-    const { aluno_id, id_chamada, validacao_toque_tela, validacao_movimento } = req.body;
+    const { 
+        aluno_id, 
+        id_chamada, 
+        validacao_toque_tela,
+        validacao_movimento 
+    } = req.body;
 
-    if (!aluno_id || !id_chamada)
-        return res.status(400).json({ erro: "Dados obrigatórios ausentes." });
+    if (!aluno_id || !id_chamada || validacao_toque_tela === undefined || validacao_movimento === undefined)
+        return res.status(400).json({ erro: "Dados obrigatórios ausentes (id, chamada, validacoes)." });
 
     try {
-        // Busca a chamada (e o seu data_hora_fim) do db_manager
         const chamada = await dbManager.getChamadaById(id_chamada);
         if (!chamada)
             return res.status(404).json({ erro: "Chamada não encontrada." });
 
-        // O getChamadaById (corrigido) já retorna 'data_hora_fim' como um objeto DateTime
-        if (DateTime.now().setZone('America/Sao_Paulo') > chamada.data_hora_fim)
-            return res.status(400).json({ erro: "Chamada expirada." });
+        const agora = DateTime.now().setZone('America/Sao_Paulo');
+        const horaFim = chamada.data_hora_fim;
+        
+        const config = dbManager.getConfigHorarios().find(c => c.rodada === chamada.rodada);
+        if (!config) {
+            return res.status(500).json({ erro: "Erro de configuração da rodada." });
+        }
+        
+        const duracaoTotal = config.duracao_minutos;
+        const tempoTolerancia = config.tolerancia_minutos;
+        const tempoNormal = duracaoTotal - tempoTolerancia;
+        
+        const horaInicio = horaFim.minus({ minutes: duracaoTotal });
+        const horaFimNormal = horaInicio.plus({ minutes: tempoNormal });
 
-        const status = (validacao_toque_tela && validacao_movimento) ? "Presente" : "Faltou";
-        const obs = status === "Presente" ? "" : "Não cumpriu critérios.";
+        let status = "Faltou";
+        let obs = "";
 
+        const cumpriuCriterios = (validacao_toque_tela && validacao_movimento);
+
+        if (!cumpriuCriterios) {
+            obs = "Não cumpriu os critérios de validação.";
+            status = "Faltou";
+        } else if (agora > horaFim) {
+            status = "Faltou";
+            obs = "Registro após o tempo limite.";
+        } else if (agora > horaFimNormal) {
+            status = "Atrasado";
+            obs = `Registro com atraso.`;
+        } else {
+            status = "Presente";
+            obs = `Presença registrada.`;
+        }
+        
         const registro = await dbManager.registrarPresenca(aluno_id, id_chamada, status, obs);
-        if (registro.error) return res.status(409).json({ erro: registro.error });
+        
+        if (registro.error) {
+            return res.status(409).json({ erro: registro.error });
+        }
 
         res.status(201).json(registro);
     } catch (err) {
@@ -77,13 +124,10 @@ router.get('/relatorio', async (req, res) => {
     }
 });
 
-
-// --- ROTA NOVA ADICIONADA ---
 router.get('/chamadas/ativa/:horaInicio', async (req, res) => {
     const { horaInicio } = req.params;
     
     try {
-        // Usa a nova função do db_manager (que busca no SQL)
         const chamada = await dbManager.getChamadaAtivaPorRodada(horaInicio); 
 
         if (!chamada) {

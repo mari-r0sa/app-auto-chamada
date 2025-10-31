@@ -1,7 +1,9 @@
+// screens/config.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/custom_appbar.dart';
 import '../widgets/custom_bottom_bar.dart';
+import '../services/auth_service.dart'; // Importe o AuthService
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -13,135 +15,132 @@ class ConfigScreen extends StatefulWidget {
 class _ConfigScreenState extends State<ConfigScreen> {
   static const secondaryColor = Color(0xFFD9D9D9);
 
-  // "Mock" de tipo de usuário para testar enquanto a API não fica pronta
-  // "aluno" ou "prof"
-  final String userType = "aluno";
+  // Lê o tipo de usuário do SharedPreferences
+  String _userType = "carregando"; // Valor inicial
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserType();
+  }
+
+  Future<void> _loadUserType() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userType = prefs.getString('user_type') ?? 'Aluno'; 
+    });
+  }
+
+  void _exportarRelatorioAluno() {
+    print("Exportar relatório do aluno");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Exportando relatório de presenças...")),
+    );
+  }
+
+  void _exportarRelatorioHoje() {
+    print("Exportar relatório de presenças de hoje");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Exportando relatório de hoje...")),
+    );
+  }
+
+  void _exportarRelatorioOutraData() {
+    print("Exportar relatório de outra data");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Selecione uma data para exportar...")),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       
-      // ---------- APPBAR ----------
+      // ---------- APPBAR (RF005) ----------
       appBar: const CustomAppBar(
         title: "Auto-chamada",
       ),
 
       // ---------- CORPO DO APP ----------
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0), // Margem lateral
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center, // Centraliza verticalmente
-          children: [
-
-            // Verifica o tipo de usuário
-            if (userType == "aluno") ...[
-              // ----------- ALUNO -----------
-              SizedBox(
-                width: double.infinity, // ocupa 100% da largura disponível
-                height: 60,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: secondaryColor,
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    print("Exportar relatório do aluno");
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Exportando relatório de presenças...")),
-                    );
-                  },
-                  child: const Text(
-                    "Exportar meu relatório de presenças",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ] else if (userType == "prof") ...[
-              // ----------- PROFESSOR -----------
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: secondaryColor,
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    print("Exportar relatório de presenças de hoje");
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Exportando relatório de hoje...")),
-                    );
-                  },
-                  child: const Text(
-                    "Exportar relatório de presenças de hoje",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16), // Espaço entre botões
-
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: secondaryColor,
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    print("Exportar relatório de outra data");
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Selecione uma data para exportar...")),
-                    );
-                  },
-                  child: const Text(
-                    "Exportar relatório de outra data",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: Center(
+          // Mostra os botões corretos (RF017 ou RF018)
+          child: _userType == "carregando"
+              ? const CircularProgressIndicator()
+              : _userType == "Aluno"
+                  ? _buildAlunoView() // Botões do Aluno
+                  : _buildProfessorView(), // Botões do Professor
         ),
       ),
 
       // ---------- BARRA INFERIOR ----------
       bottomNavigationBar: CustomBottomBar(
         onLogout: () async {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('jwt_token'); // limpa token
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+          AuthService.logout(context); // Chama o serviço de logout
         },
         onHome: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Já está na HomeScreen")),
-          );
+           // Navega de volta para a Home
+           Navigator.pushReplacementNamed(context, '/home');
         },
         onConfig: () {
-          Navigator.pushReplacementNamed(context, '/config');
+          // Já está na Config, não faz nada
         },
+      ),
+    );
+  }
+
+
+  // --- Widget para os botões do Aluno ---
+  Widget _buildAlunoView() {
+    return _buildButton(
+      text: "Exportar meu relatório de presenças",
+      onPressed: _exportarRelatorioAluno,
+    );
+  }
+
+  // --- Widget para os botões do Professor ---
+  Widget _buildProfessorView() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildButton(
+          text: "Exportar relatório de presenças de hoje",
+          onPressed: _exportarRelatorioHoje,
+        ),
+        const SizedBox(height: 16),
+        _buildButton(
+          text: "Exportar relatório de outra data",
+          onPressed: _exportarRelatorioOutraData,
+        ),
+      ],
+    );
+  }
+
+  // --- Widget helper para construir os botões ---
+  Widget _buildButton({required String text, required VoidCallback onPressed}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: secondaryColor,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        onPressed: onPressed,
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
