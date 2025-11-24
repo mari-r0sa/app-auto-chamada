@@ -22,15 +22,6 @@ router.get('/presencas/hoje/:alunoId', async (req, res) => {
     }
 });
 
-router.get('/alunos', async (req, res) => {
-    try {
-        const alunos = await dbManager.getAlunos();
-        res.json({ alunos });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar alunos." });
-    }
-});
-
 router.post('/chamadas/iniciar', async (req, res) => {
     const { rodada: horaInicioString } = req.body;
 
@@ -54,13 +45,13 @@ router.post('/chamadas/iniciar', async (req, res) => {
 
 router.post('/presencas', async (req, res) => {
     const { 
-        aluno_id, 
+        user_id, 
         id_chamada, 
         validacao_toque_tela,
         validacao_movimento 
     } = req.body;
 
-    if (!aluno_id || !id_chamada || validacao_toque_tela === undefined || validacao_movimento === undefined)
+    if (!user_id || !id_chamada || validacao_toque_tela === undefined || validacao_movimento === undefined)
         return res.status(400).json({ erro: "Dados obrigatórios ausentes (id, chamada, validacoes)." });
 
     try {
@@ -102,7 +93,7 @@ router.post('/presencas', async (req, res) => {
             obs = `Presença registrada.`;
         }
         
-        const registro = await dbManager.registrarPresenca(aluno_id, id_chamada, status, obs);
+        const registro = await dbManager.registrarPresenca(user_id, id_chamada, status, obs);
         
         if (registro.error) {
             return res.status(409).json({ erro: registro.error });
@@ -112,15 +103,6 @@ router.post('/presencas', async (req, res) => {
     } catch (err) {
         console.error("Erro ao registrar presença:", err);
         res.status(500).json({ erro: "Erro ao registrar presença." });
-    }
-});
-
-router.get('/relatorio', async (req, res) => {
-    try {
-        const relatorio = await dbManager.getRelatorioDados();
-        res.json({ registros: relatorio });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao gerar relatório." });
     }
 });
 

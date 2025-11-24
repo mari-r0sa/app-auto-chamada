@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const dbManager = require('../db/db_manager');
 
-// RF002: Rota de Cadastro
 router.post('/cadastro', async (req, res) => {
     const { nome, email, senha } = req.body;
 
@@ -25,23 +24,28 @@ router.post('/cadastro', async (req, res) => {
 router.post('/login', async (req, res) => {
     const { email, senha } = req.body;
 
-    if (!email || !senha) {
-        return res.status(400).json({ erro: "E-mail e senha são obrigatórios." });
-    }
+    console.log("REQ LOGIN:", req.body);
 
     try {
-        const resultado = await dbManager.loginAluno(email, senha);
-        
+        const resultado = await dbManager.loginUsuario(email, senha);
+
         if (!resultado) {
-            return res.status(401).json({ erro: "Credenciais inválidas." }); // 401 = Não autorizado
+            return res.status(401).json({ erro: "Credenciais inválidas." });
         }
 
-        // Sucesso
-        res.json(resultado); // Retorna { token, usuario }
+        res.json(resultado);
 
     } catch (err) {
-        console.error("Erro no login:", err);
         res.status(500).json({ erro: "Erro interno no servidor." });
+    }
+});
+
+router.get('/alunos', async (req, res) => {
+    try {
+        const alunos = await dbManager.getAlunos();
+        res.json({ alunos });
+    } catch (err) {
+        res.status(500).json({ erro: "Erro ao buscar alunos." });
     }
 });
 

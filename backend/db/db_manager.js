@@ -18,43 +18,82 @@ const pool = mysql.createPool({
 const ZONA_HORARIO = 'America/Sao_Paulo';
 
 const CONFIG_HORARIOS = [
-    { rodada: 1, hora_inicio: "19:30", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 2, hora_inicio: "20:15", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 3, hora_inicio: "21:00", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 4, hora_inicio: "21:45", duracao_minutos: 10, tolerancia_minutos: 5 }
+    { rodada: 1, hora_inicio: "19:40", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 4, hora_inicio: "21:30", duracao_minutos: 10, tolerancia_minutos: 5 }
 ];
 
 const dbManager = {
     getConfigHorarios: () => CONFIG_HORARIOS,
 
+    // USUARIOS
     async getAlunos() {
         const [rows] = await pool.query("SELECT id, nome FROM usuario WHERE tipo = 2");
         return rows;
     },
 
-    async loginAluno(email, senha) {
-        const [rows] = await pool.query(
-            "SELECT id, nome, email, senha FROM usuario WHERE email = ? AND tipo = 2",
-            [email]
-        );
-        if (rows.length === 0) return null; 
-        const usuario = rows[0];
-        const senhaValida = await bcrypt.compare(senha, usuario.senha);
-        if (!senhaValida) return null;
-        const token = jwt.sign(
-            { id: usuario.id, nome: usuario.nome, email: usuario.email, tipo: 'Aluno' },
-            JWT_SECRET,
-            { expiresIn: '8h' }
-        );
-        return { 
-            token, 
-            usuario: { 
-                id: usuario.id, 
-                nome: usuario.nome, 
-                email: usuario.email,
-                tipo: 'Aluno' 
-            } 
-        };
+    async loginUsuario(email, senha) {
+        const conn = await pool.getConnection();
+        console.log("DEBUG LOGIN USER:", email);
+
+        try {
+            const [rows] = await conn.query(
+                "SELECT * FROM usuario WHERE email = ?",
+                [email]
+            );
+
+            if (rows.length === 0) {
+                console.log("LOGIN: usuário não encontrado para email:", email);
+                return null;
+            }
+
+            const user = rows[0];
+            console.log("USER FOUND:", user);
+
+            // Segurança: verifique se a coluna de senha existe
+            if (!user.senha) {
+                console.error("LOGIN: usuário encontrado sem hash de senha (user.senha vazio)");
+                return null;
+            }
+
+            // Verificar senha (compare com a coluna correta 'senha')
+            let senhaCorreta = false;
+            try {
+                senhaCorreta = await bcrypt.compare(senha, user.senha);
+            } catch (err) {
+                console.error("Erro ao comparar senha:", err);
+                return null;
+            }
+
+            if (!senhaCorreta) {
+                console.log("LOGIN: senha incorreta para:", email);
+                return null;
+            }
+
+            // Gerar token usando a constante JWT_SECRET (ou altere para process.env se preferir)
+            const token = jwt.sign(
+                { id: user.id, tipo: user.tipo },
+                JWT_SECRET, // <--- use a constante definida no topo
+                { expiresIn: "12h" }
+            );
+
+            return {
+                token,
+                usuario: {
+                    id: user.id,
+                    nome: user.nome,
+                    email: user.email,
+                    tipo: user.tipo
+                }
+            };
+
+        } catch (err) {
+            console.error("Erro interno em loginUsuario:", err);
+            throw err; // propaga para a rota exibir 500 (com log)
+        } finally {
+            conn.release();
+        }
     },
 
     async cadastrarAluno(nome, email, senha) {
@@ -71,6 +110,7 @@ const dbManager = {
         return { id: result.insertId, nome, email };
     },
 
+    // CHAMADA
     async iniciarNovaChamada(rodadaNum, duracaoMinutos, horaInicioString) {
         const agora = DateTime.now().setZone(ZONA_HORARIO);
         const [h, m] = horaInicioString.split(':').map(Number);
@@ -197,7 +237,7 @@ const dbManager = {
                 "INSERT INTO aluno_chamada (aluno, chamada, presenca, obs) VALUES (?, ?, ?, ?)",
                 [alunoId, chamadaId, presencaId, obs]
             );
-            return { id_registro: result.insertId, aluno_id: alunoId, id_chamada: chamadaId, status_presenca: statusDesc };
+            return { id_registro: result.insertId, user_id: alunoId, id_chamada: chamadaId, status_presenca: statusDesc };
         } catch (err) {
             if (err.code === 'ER_DUP_ENTRY') {
                 return { error: "Aluno já registrou presença nesta rodada." };
@@ -206,20 +246,74 @@ const dbManager = {
         }
     },
 
-    async getRelatorioDados() {
+    // RELATORIOS
+    async getRelatorioPorAluno(alunoId) {
         const [rows] = await pool.query(
-            `SELECT u.nome AS aluno, c.data_hora AS data_hora_chamada, p.descricao AS presenca, ac.obs AS observacoes
+            `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
             FROM aluno_chamada ac
             JOIN usuario u ON ac.aluno = u.id
             JOIN chamada c ON ac.chamada = c.id
             JOIN presenca p ON ac.presenca = p.id
-            ORDER BY c.data_hora DESC, u.nome ASC`
+            WHERE ac.aluno = ?
+            ORDER BY c.data_hora DESC`,
+            [alunoId]
         );
+
+        return rows.map(r => {
+            const data = DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO);
+
+            return {
+                aluno: r.aluno,
+                data: data.toFormat("dd/MM/yyyy HH:mm"),
+                presenca: r.presenca,
+                observacoes: r.obs || ""
+            };
+        });
+    },
+
+   async getRelatorioPorData(dataString) {
+        const inicio = DateTime.fromISO(dataString).setZone(ZONA_HORARIO).startOf("day").toSQL();
+        const fim = DateTime.fromISO(dataString).setZone(ZONA_HORARIO).endOf("day").toSQL();
+
+        const [rows] = await pool.query(
+            `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
+            FROM aluno_chamada ac
+            JOIN usuario u ON ac.aluno = u.id
+            JOIN chamada c ON ac.chamada = c.id
+            JOIN presenca p ON ac.presenca = p.id
+            WHERE c.data_hora BETWEEN ? AND ?
+            ORDER BY c.data_hora DESC, u.nome ASC`,
+            [inicio, fim]
+        );
+
         return rows.map(r => ({
             aluno: r.aluno,
-            data: DateTime.fromSQL(r.data_hora_chamada).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
+            data: DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
             presenca: r.presenca,
-            observacoes: r.observacoes || ""
+            observacoes: r.obs || ""
+        }));
+    },
+
+    async getRelatorioHoje() {
+        const hojeInicio = DateTime.now().setZone(ZONA_HORARIO).startOf('day').toSQL();
+        const hojeFim = DateTime.now().setZone(ZONA_HORARIO).endOf('day').toSQL();
+
+        const [rows] = await pool.query(
+            `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
+            FROM aluno_chamada ac
+            JOIN usuario u ON ac.aluno = u.id
+            JOIN chamada c ON ac.chamada = c.id
+            JOIN presenca p ON ac.presenca = p.id
+            WHERE c.data_hora BETWEEN ? AND ?
+            ORDER BY c.data_hora DESC, u.nome ASC`,
+            [hojeInicio, hojeFim]
+        );
+
+        return rows.map(r => ({
+            aluno: r.aluno,
+            data: DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
+            presenca: r.presenca,
+            observacoes: r.obs || ""
         }));
     }
 };
