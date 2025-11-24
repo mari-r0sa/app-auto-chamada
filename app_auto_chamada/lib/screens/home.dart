@@ -81,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
   //Combina os dois em uma lista de [ChamadaComStatus].
   Future<List<ChamadaComStatus>> _loadChamadaData() async {
     final prefs = await SharedPreferences.getInstance();
-    _alunoId = prefs.getInt('aluno_id');
+    _alunoId = prefs.getInt('user_id');
 
     if (_alunoId == null) {
       if (mounted) AuthService.logout(context); // Força logout se o ID sumir

@@ -12,7 +12,7 @@ class AuthService {
     
     // Limpa todos os dados salvos no login
     await prefs.remove('jwt_token');
-    await prefs.remove('aluno_id');
+    await prefs.remove('user_id');
     await prefs.remove('user_type');
 
     // Navega para o Login, removendo todas as telas anteriores

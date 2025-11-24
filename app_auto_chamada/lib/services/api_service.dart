@@ -20,7 +20,7 @@ class ApiService {
     };
   }
 
-  // --- LOGIN ---
+  // --- USUÁRIO ---
   static Future<Map<String, dynamic>> login(String email, String senha) async {
     final url = Uri.parse('$baseUrl/usuarios/login');
     final response = await http.post(
@@ -37,7 +37,11 @@ class ApiService {
     }
   }
 
-  // --- CADASTRO ---
+  static Future<int> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('user_id') ?? 0;
+  }
+
   static Future<Map<String, dynamic>> cadastrar(String nome, String email, String senha) async {
     final url = Uri.parse('$baseUrl/usuarios/cadastro');
     final response = await http.post(
@@ -54,6 +58,7 @@ class ApiService {
     }
   }
 
+  // --- CHAMADAS ---
   // Busca os horários de configuração (para o home.dart)
   static Future<Map<String, dynamic>> getHorarios() async {
     final url = Uri.parse('$baseUrl/chamadas/configuracao/horarios');
@@ -113,7 +118,7 @@ class ApiService {
       url,
       headers: await _getAuthHeaders(), // Usa token
       body: jsonEncode({
-        'aluno_id': alunoId,
+        'user_id': alunoId,
         'id_chamada': idChamada,
         'validacao_toque_tela': validacaoToqueTela,
         'validacao_movimento': validacaoMovimento,
@@ -125,6 +130,44 @@ class ApiService {
     } else {
       final body = jsonDecode(response.body);
       throw Exception('Falha: ${body['erro'] ?? response.body}');
+    }
+  }
+
+  // --- RELATÓRIOS ---
+
+  // Relatório completo do aluno logado
+  static Future<List<dynamic>> getRelatorioAluno(int alunoId) async {
+    final url = Uri.parse('$baseUrl/relatorio/aluno/$alunoId');
+    final response = await http.get(url, headers: await _getAuthHeaders());
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Erro ao buscar relatório do aluno");
+    }
+  }
+
+  // Relatório dos alunos na data de hoje
+  static Future<List<dynamic>> getRelatorioHoje() async {
+    final url = Uri.parse('$baseUrl/relatorio/hoje');
+    final response = await http.get(url, headers: await _getAuthHeaders());
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Erro ao buscar relatório de hoje");
+    }
+  }
+
+  // Relatório por data específica
+  static Future<List<dynamic>> getRelatorioPorData(String data) async {
+    final url = Uri.parse('$baseUrl/relatorio/data/$data');
+    final response = await http.get(url, headers: await _getAuthHeaders());
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Erro ao buscar relatório dessa data");
     }
   }
 }

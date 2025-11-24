@@ -37,8 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (token != null && usuario != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('jwt_token', token);
-        await prefs.setInt('aluno_id', usuario['id']); 
-        await prefs.setString('user_type', usuario['tipo']); 
+        await prefs.setInt('user_id', usuario['id']); 
+        await prefs.setInt('user_type', usuario['tipo']);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

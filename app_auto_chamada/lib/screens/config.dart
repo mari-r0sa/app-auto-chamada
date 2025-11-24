@@ -1,9 +1,10 @@
-// screens/config.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/custom_appbar.dart';
 import '../widgets/custom_bottom_bar.dart';
-import '../services/auth_service.dart'; // Importe o AuthService
+import '../services/auth_service.dart';
+import '../services/api_service.dart';
+import '../services/csv_service.dart';
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -14,9 +15,7 @@ class ConfigScreen extends StatefulWidget {
 
 class _ConfigScreenState extends State<ConfigScreen> {
   static const secondaryColor = Color(0xFFD9D9D9);
-
-  // Lê o tipo de usuário do SharedPreferences
-  String _userType = "carregando"; // Valor inicial
+  String _userType = "carregando";
 
   @override
   void initState() {
@@ -26,81 +25,120 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
   Future<void> _loadUserType() async {
     final prefs = await SharedPreferences.getInstance();
+    final typeInt = prefs.getInt('user_type') ?? 0;
+
     setState(() {
-      _userType = prefs.getString('user_type') ?? 'Aluno'; 
+      _userType = (typeInt == 1) ? "Aluno" : "Professor";
     });
+  } 
+
+  Future<int> _getAlunoId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt("user_id") ?? 0;
   }
 
-  void _exportarRelatorioAluno() {
-    print("Exportar relatório do aluno");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Exportando relatório de presenças...")),
+  Future<void> exportarRelatorioAluno(int alunoId) async {
+    try {
+      final registros = await ApiService.getRelatorioAluno(alunoId);
+
+      final caminho = await CsvService.gerarCSV(
+        List<Map<String, dynamic>>.from(registros),
+        "relatorio_aluno_$alunoId",
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("CSV salvo em:\n$caminho")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Erro: $e")));
+    }
+  }
+
+  void _exportarRelatorioHoje() async {
+    try {
+      final registros = await ApiService.getRelatorioHoje();
+
+      final caminho = await CsvService.gerarCSV(
+        List<Map<String, dynamic>>.from(registros),
+        "relatorio_hoje",
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("CSV salvo em:\n$caminho")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Erro: $e")));
+    }
+  }
+
+  void _exportarRelatorioOutraData() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(),
     );
-  }
 
-  void _exportarRelatorioHoje() {
-    print("Exportar relatório de presenças de hoje");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Exportando relatório de hoje...")),
-    );
-  }
+    if (picked == null) return;
 
-  void _exportarRelatorioOutraData() {
-    print("Exportar relatório de outra data");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Selecione uma data para exportar...")),
-    );
-  }
+    final data = "${picked.year}-${picked.month}-${picked.day}";
 
+    try {
+      final registros = await ApiService.getRelatorioPorData(data);
+
+      final caminho = await CsvService.gerarCSV(
+        List<Map<String, dynamic>>.from(registros),
+        "relatorio_$data",
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("CSV salvo em:\n$caminho")));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Erro: $e")));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      
-      // ---------- APPBAR (RF005) ----------
-      appBar: const CustomAppBar(
-        title: "Auto-chamada",
-      ),
-
-      // ---------- CORPO DO APP ----------
+      appBar: const CustomAppBar(title: "Auto-chamada"),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Center(
-          // Mostra os botões corretos (RF017 ou RF018)
           child: _userType == "carregando"
               ? const CircularProgressIndicator()
-              : _userType == "Aluno"
-                  ? _buildAlunoView() // Botões do Aluno
-                  : _buildProfessorView(), // Botões do Professor
+              : _userType == 2
+                  ? _buildAlunoView()
+                  : _buildProfessorView(),
         ),
       ),
-
-      // ---------- BARRA INFERIOR ----------
       bottomNavigationBar: CustomBottomBar(
-        onLogout: () async {
-          AuthService.logout(context); // Chama o serviço de logout
-        },
-        onHome: () {
-           // Navega de volta para a Home
-           Navigator.pushReplacementNamed(context, '/home');
-        },
-        onConfig: () {
-          // Já está na Config, não faz nada
-        },
+        onLogout: () => AuthService.logout(context),
+        onHome: () => Navigator.pushReplacementNamed(context, '/home'),
+        onConfig: () {},
       ),
     );
   }
 
-
-  // --- Widget para os botões do Aluno ---
   Widget _buildAlunoView() {
     return _buildButton(
       text: "Exportar meu relatório de presenças",
-      onPressed: _exportarRelatorioAluno,
+      onPressed: () async {
+        final id = await _getAlunoId();
+        exportarRelatorioAluno(id);
+      },
     );
   }
 
-  // --- Widget para os botões do Professor ---
   Widget _buildProfessorView() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -118,17 +156,18 @@ class _ConfigScreenState extends State<ConfigScreen> {
     );
   }
 
-  // --- Widget helper para construir os botões ---
-  Widget _buildButton({required String text, required VoidCallback onPressed}) {
+  Widget _buildButton({
+    required String text,
+    required VoidCallback onPressed,
+  }) {
     return SizedBox(
       width: double.infinity,
       height: 60,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: secondaryColor,
-          elevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
         onPressed: onPressed,
@@ -136,8 +175,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
           text,
           textAlign: TextAlign.center,
           style: const TextStyle(
+            fontSize: 15,
             color: Colors.black,
-            fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
