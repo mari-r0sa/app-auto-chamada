@@ -9,10 +9,11 @@ router.get('/configuracao/horarios', (req, res) => {
 
 router.get('/presencas/hoje/:alunoId', async (req, res) => {
     const { alunoId } = req.params;
+
     if (!alunoId) {
         return res.status(400).json({ erro: "ID do aluno é obrigatório." });
     }
-    
+
     try {
         const registros = await dbManager.getPresencasHoje(parseInt(alunoId, 10));
         res.json({ presencas: registros });
@@ -22,7 +23,7 @@ router.get('/presencas/hoje/:alunoId', async (req, res) => {
     }
 });
 
-router.post('/chamadas/iniciar', async (req, res) => {
+router.post('/iniciar', async (req, res) => {
     const { rodada: horaInicioString } = req.body;
 
     const config = dbManager.getConfigHorarios().find(c => c.hora_inicio === horaInicioString);
@@ -32,9 +33,9 @@ router.post('/chamadas/iniciar', async (req, res) => {
 
     try {
         const chamada = await dbManager.iniciarNovaChamada(
-            config.rodada, 
+            config.rodada,
             config.duracao_minutos,
-            config.hora_inicio // Passa a hora de início programada
+            config.hora_inicio
         );
         res.json(chamada);
     } catch (err) {
@@ -44,85 +45,141 @@ router.post('/chamadas/iniciar', async (req, res) => {
 });
 
 router.post('/presencas', async (req, res) => {
-    const { 
-        user_id, 
-        id_chamada, 
-        validacao_toque_tela,
-        validacao_movimento 
-    } = req.body;
+    const { user_id, id_chamada, latitude, longitude } = req.body;
 
-    if (!user_id || !id_chamada || validacao_toque_tela === undefined || validacao_movimento === undefined)
-        return res.status(400).json({ erro: "Dados obrigatórios ausentes (id, chamada, validacoes)." });
+    console.log(latitude, longitude);
+
+    if (!user_id || !id_chamada || latitude === undefined || longitude === undefined) {
+        return res.status(400).json({
+            erro: "Dados obrigatórios ausentes (user_id, id_chamada, latitude, longitude)."
+        });
+    }
 
     try {
         const chamada = await dbManager.getChamadaById(id_chamada);
-        if (!chamada)
+        if (!chamada) {
             return res.status(404).json({ erro: "Chamada não encontrada." });
+        }
 
         const agora = DateTime.now().setZone('America/Sao_Paulo');
         const horaFim = chamada.data_hora_fim;
-        
+
         const config = dbManager.getConfigHorarios().find(c => c.rodada === chamada.rodada);
         if (!config) {
             return res.status(500).json({ erro: "Erro de configuração da rodada." });
         }
-        
+
         const duracaoTotal = config.duracao_minutos;
         const tempoTolerancia = config.tolerancia_minutos;
         const tempoNormal = duracaoTotal - tempoTolerancia;
-        
+
         const horaInicio = horaFim.minus({ minutes: duracaoTotal });
         const horaFimNormal = horaInicio.plus({ minutes: tempoNormal });
 
-        let status = "Faltou";
-        let obs = "";
+        // Validação Loc - Não driblar chamada
 
-        const cumpriuCriterios = (validacao_toque_tela && validacao_movimento);
+        // Coords católica
+        const LAT_FACULDADE = -26.3046844;
+        const LNG_FACULDADE = -48.8504338;
 
-        if (!cumpriuCriterios) {
-            obs = "Não cumpriu os critérios de validação.";
-            status = "Faltou";
-        } else if (agora > horaFim) {
+        // // Coords minha casa - TESTE
+        // const LAT_FACULDADE = -26.256950;
+        // const LNG_FACULDADE = -48.847300;
+
+        // Distancia maxima permitida para validar presenca
+        const RAIO_MAXIMO_METROS = 150;
+
+        function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // raio da Terra em metros
+            const rad = Math.PI / 180;
+
+            const lat1Rad = lat1 * rad;
+            const lat2Rad = lat2 * rad;
+            const dLat = (lat2 - lat1) * rad;
+            const dLon = (lon2 - lon1) * rad;
+
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1Rad) * Math.cos(lat2Rad) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
+        }
+
+        const distancia = calcularDistanciaMetros(
+            latitude,
+            longitude,
+            LAT_FACULDADE,
+            LNG_FACULDADE
+        );
+
+        const dentroDoRaio = distancia <= RAIO_MAXIMO_METROS;
+
+        // Se estiver fora da área, NÃO registra falta
+        if (!dentroDoRaio) {
+            return res.status(403).json({
+                validado: false,
+                mensagem: "Você está fora da distância permitida. A chamada NÃO foi registrada. Aproxime-se da sala e tente novamente.",
+                distancia: `${distancia.toFixed(1)} metros`
+            });
+        }
+
+        // Regras de tempo
+        let status;
+        let obs;
+
+        if (agora > horaFim) {
             status = "Faltou";
             obs = "Registro após o tempo limite.";
         } else if (agora > horaFimNormal) {
             status = "Atrasado";
-            obs = `Registro com atraso.`;
+            obs = "Registro com atraso.";
         } else {
             status = "Presente";
-            obs = `Presença registrada.`;
+            obs = "Presença registrada com sucesso.";
         }
-        
-        const registro = await dbManager.registrarPresenca(user_id, id_chamada, status, obs);
-        
+
+        // Insere presença no BD
+        const registro = await dbManager.registrarPresenca(
+            user_id,
+            id_chamada,
+            status,
+            obs
+        );
+
         if (registro.error) {
             return res.status(409).json({ erro: registro.error });
         }
 
-        res.status(201).json(registro);
+        return res.status(201).json(registro);
+
     } catch (err) {
         console.error("Erro ao registrar presença:", err);
-        res.status(500).json({ erro: "Erro ao registrar presença." });
+        return res.status(500).json({ erro: "Erro ao registrar presença." });
     }
 });
 
-router.get('/chamadas/ativa/:horaInicio', async (req, res) => {
-    const { horaInicio } = req.params;
-    
+router.get('/ativa/:horaInicio', async (req, res) => {
+    const horaInicio = decodeURIComponent(req.params.horaInicio);
+
     try {
-        const chamada = await dbManager.getChamadaAtivaPorRodada(horaInicio); 
+        const chamada = await dbManager.getChamadaAtivaPorRodada(horaInicio);
 
         if (!chamada) {
-            return res.status(404).json({ erro: "Nenhuma chamada ativa encontrada para este horário." });
+            return res.status(404).json({ erro: "Nenhuma chamada ativa encontrada para este horario." });
         }
 
-        res.json({ id_chamada: chamada.id, data_hora_fim: chamada.data_hora_fim });
+        res.json({
+            id_chamada: chamada.id,
+            data_hora_fim: chamada.data_hora_fim
+        });
 
     } catch (err) {
         console.error("Erro ao buscar chamada ativa:", err);
         res.status(500).json({ erro: "Erro ao buscar chamada ativa." });
     }
 });
-
 
 module.exports = router;
