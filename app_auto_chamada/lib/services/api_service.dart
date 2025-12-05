@@ -1,20 +1,20 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Detecta automaticamente se está rodando em Android/Emulador/Web
-  static final String _baseIp =
-      defaultTargetPlatform == TargetPlatform.android
-          ? "10.0.2.2"
-          : "localhost";
-
   static final String baseUrl = "http://192.168.1.101:3000/api";
 
-  // -------------------------
+  static String getUrlRelatorioAluno(int alunoId) =>
+      "$baseUrl/relatorio/aluno/$alunoId";
+
+  static String getUrlRelatorioHoje() =>
+      "$baseUrl/relatorio/hoje";
+
+  static String getUrlRelatorioPorData(String data) =>
+      "$baseUrl/relatorio/data/$data";
+
   // AUTH HEADERS
-  // -------------------------
   static Future<Map<String, String>> _getAuthHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString("jwt_token");
@@ -25,9 +25,7 @@ class ApiService {
     };
   }
 
-  // -------------------------
   // LOGIN & CADASTRO
-  // -------------------------
   static Future<Map<String, dynamic>> login(
       String email, String senha) async {
     final url = Uri.parse("$baseUrl/usuarios/login");
@@ -77,9 +75,7 @@ class ApiService {
     // OBS: 0 significa que o usuário não está logado
   }
 
-  // -------------------------
   // CONFIGURAÇÃO DAS CHAMADAS
-  // -------------------------
   static Future<Map<String, dynamic>> getHorarios() async {
     final url = Uri.parse("$baseUrl/chamadas/configuracao/horarios");
     final response =
@@ -93,9 +89,7 @@ class ApiService {
         "Falha ao buscar horários (${response.statusCode})");
   }
 
-  // -------------------------
   // PRESENÇAS - HOJE
-  // -------------------------
   static Future<Map<String, dynamic>> getPresencasHoje(
       int alunoId) async {
     final url =
@@ -112,16 +106,7 @@ class ApiService {
         "Falha ao buscar presenças (${response.statusCode})");
   }
 
-  // -------------------------
   // CHAMADA ATIVA
-  // -------------------------
-  //
-  // IMPORTANTE: aqui estava o maior erro!
-  // A rota estava assim:
-  //   /chamadas/chamadas/ativa
-  // Coloquei a versão correta:
-  //   /chamadas/ativa
-  //
   static Future<Map<String, dynamic>> getChamadaAtiva(
       String horaInicio) async {
     final hora = Uri.encodeComponent(horaInicio);
@@ -169,9 +154,7 @@ class ApiService {
     throw Exception("Falha: ${body['erro'] ?? response.body}");
   }
 
-  // -------------------------
   // RELATÓRIOS
-  // -------------------------
   static Future<List<dynamic>> getRelatorioAluno(
       int alunoId) async {
     final url = Uri.parse("$baseUrl/relatorio/aluno/$alunoId");

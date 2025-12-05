@@ -4,7 +4,7 @@ import '../widgets/custom_appbar.dart';
 import '../widgets/custom_bottom_bar.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
-import '../services/csv_service.dart';
+import '../services/dowload_service.dart';
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -37,18 +37,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
     return prefs.getInt("user_id") ?? 0;
   }
 
-  Future<void> exportarRelatorioAluno(int alunoId) async {
+  // Função genérica de download
+  Future<void> _baixarRelatorio(String url, String nomeArquivo) async {
     try {
-      final registros = await ApiService.getRelatorioAluno(alunoId);
-
-      final caminho = await gerarCSV(
-        List<Map<String, dynamic>>.from(registros),
-        "relatorio_aluno_$alunoId",
-      );
-
+      await DownloadService.downloadArquivo(url, nomeArquivo);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("CSV salvo em:\n$caminho")),
+        SnackBar(content: Text("Arquivo baixado: $nomeArquivo")),
       );
     } catch (e) {
       if (!mounted) return;
@@ -57,24 +52,15 @@ class _ConfigScreenState extends State<ConfigScreen> {
     }
   }
 
+  // Relatórios
+  void exportarRelatorioAluno(int alunoId) async {
+    final url = await ApiService.getUrlRelatorioAluno(alunoId);
+    await _baixarRelatorio(url, "relatorio_aluno_$alunoId.csv");
+  }
+
   void _exportarRelatorioHoje() async {
-    try {
-      final registros = await ApiService.getRelatorioHoje();
-
-      final caminho = await gerarCSV(
-        List<Map<String, dynamic>>.from(registros),
-        "relatorio_hoje",
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("CSV salvo em:\n$caminho")),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Erro: $e")));
-    }
+    final url = await ApiService.getUrlRelatorioHoje();
+    await _baixarRelatorio(url, "relatorio_hoje.csv");
   }
 
   void _exportarRelatorioOutraData() async {
@@ -84,29 +70,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
       firstDate: DateTime(2024),
       lastDate: DateTime.now(),
     );
-
     if (picked == null) return;
 
     final data = "${picked.year}-${picked.month}-${picked.day}";
-
-    try {
-      final registros = await ApiService.getRelatorioPorData(data);
-
-      final caminho = await gerarCSV(
-        List<Map<String, dynamic>>.from(registros),
-        "relatorio_$data",
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("CSV salvo em:\n$caminho")));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Erro: $e")));
-    }
+    final url = await ApiService.getUrlRelatorioPorData(data);
+    await _baixarRelatorio(url, "relatorio_$data.csv");
   }
 
+  // UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,7 +87,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
         child: Center(
           child: _userType == "carregando"
               ? const CircularProgressIndicator()
-              : _userType == 2
+              : _userType == "Aluno"
                   ? _buildAlunoView()
                   : _buildProfessorView(),
         ),

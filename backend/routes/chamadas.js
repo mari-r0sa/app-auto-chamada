@@ -44,6 +44,25 @@ router.post('/iniciar', async (req, res) => {
     }
 });
 
+router.post('/finalizar', async (req, res) => {
+    const { id_chamada } = req.body;
+
+    if (!id_chamada) {
+        return res.status(400).json({ erro: "ID da chamada é obrigatório." });
+    }
+
+    try {
+        const resultado = await dbManager.finalizarChamada(id_chamada);
+        res.json({
+            mensagem: "Chamada finalizada",
+            faltasRegistradas: resultado.qtdFaltosos || 0
+        });
+    } catch (err) {
+        console.error("Erro ao finalizar chamada:", err);
+        res.status(500).json({ erro: "Erro ao finalizar chamada." });
+    }
+});
+
 router.post('/presencas', async (req, res) => {
     const { user_id, id_chamada, latitude, longitude } = req.body;
 
@@ -79,12 +98,12 @@ router.post('/presencas', async (req, res) => {
         // Validação Loc - Não driblar chamada
 
         // Coords católica
-        const LAT_FACULDADE = -26.3046844;
-        const LNG_FACULDADE = -48.8504338;
+        // const LAT_FACULDADE = -26.3046844;
+        // const LNG_FACULDADE = -48.8504338;
 
         // // Coords minha casa - TESTE
-        // const LAT_FACULDADE = -26.2609168;
-        // const LNG_FACULDADE = -48.8499831;
+        const LAT_FACULDADE = -26.2609168;
+        const LNG_FACULDADE = -48.8499831;
 
         // Distancia maxima permitida para validar presenca
         const RAIO_MAXIMO_METROS = 150;

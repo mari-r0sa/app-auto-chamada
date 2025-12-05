@@ -18,10 +18,14 @@ const pool = mysql.createPool({
 const ZONA_HORARIO = 'America/Sao_Paulo';
 
 const CONFIG_HORARIOS = [
-    { rodada: 1, hora_inicio: "19:15", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 4, hora_inicio: "21:30", duracao_minutos: 10, tolerancia_minutos: 5 }
+    { rodada: 1, hora_inicio: "08:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 2, hora_inicio: "10:05", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 3, hora_inicio: "10:30", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 4, hora_inicio: "11:40", duracao_minutos: 10, tolerancia_minutos: 5 }
+    // { rodada: 1, hora_inicio: "19:15", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 4, hora_inicio: "21:30", duracao_minutos: 10, tolerancia_minutos: 5 }
 ];
 
 const dbManager = {
@@ -118,7 +122,7 @@ const dbManager = {
 
         const [result] = await pool.query(
             "INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", 
-            [dataHoraInicio.toFormat("yyyy-MM-dd HH:mm:ss"), rodadaNum]
+            [dataHoraInicio.toFormat("yyyy-MM-dd HH:mm"), rodadaNum]
         );
         
         const dataHoraFim = dataHoraInicio.plus({ minutes: duracaoMinutos });
@@ -126,10 +130,52 @@ const dbManager = {
         return {
             id: result.insertId,
             rodada: rodadaNum,
-            data_hora_inicio: dataHoraInicio.toFormat("yyyy-MM-dd HH:mm:ss"),
-            data_hora_fim: dataHoraFim.toFormat("yyyy-MM-dd HH:mm:ss"),
+            data_hora_inicio: dataHoraInicio.toFormat("yyyy-MM-dd HH:mm"),
+            data_hora_fim: dataHoraFim.toFormat("yyyy-MM-dd HH:mm"),
             status: "ATIVA"
         };
+    },
+
+    async registrarFaltasAutomaticas(idChamada) {
+        // 1. Busca chamada
+        const chamada = await this.getChamadaById(idChamada);
+        if (!chamada) throw new Error("Chamada não encontrada");
+
+        // 2. Lista de alunos (tipo = 2)
+        const alunos = await this.getAlunos();
+
+        // 3. Presenças já registradas
+        const [rows] = await pool.query(
+            "SELECT aluno FROM aluno_chamada WHERE chamada = ?",
+            [idChamada]
+        );
+        const alunosPresentes = rows.map(r => r.aluno);
+
+        // 4. Filtra faltosos
+        const faltosos = alunos.filter(a => !alunosPresentes.includes(a.id));
+
+        // 5. Registra faltas
+        for (const aluno of faltosos) {
+            await this.registrarPresenca(
+                aluno.id,
+                idChamada,
+                "Faltou",
+                "Não registrou presença até o fim da chamada"
+            );
+        }
+
+        return { qtdFaltosos: faltosos.length };
+    },
+
+    async finalizarChamada(idChamada) {
+        await this.registrarFaltasAutomaticas(idChamada);
+
+        await pool.query(
+            "UPDATE chamada SET status = 'FINALIZADA' WHERE id = ?",
+            [idChamada]
+        );
+
+        return { idChamada, status: "FINALIZADA" };
     },
 
     async getChamadaById(chamadaId) {
@@ -195,7 +241,7 @@ const dbManager = {
         // Verifica se 'agora' está dentro da janela
         if (agora >= horaInicioHoje && agora <= horaFimTotal) {
             // Se sim, cria a chamada no banco
-            const dataHoraInicioSQL = horaInicioHoje.toFormat("yyyy-MM-dd HH:mm:ss");
+            const dataHoraInicioSQL = horaInicioHoje.toFormat("yyyy-MM-dd HH:mm");
             
             const [result] = await pool.query(
                 "INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", 
