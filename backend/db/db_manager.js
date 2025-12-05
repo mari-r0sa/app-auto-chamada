@@ -1,6 +1,6 @@
 const mysql = require('mysql2/promise');
 const { DateTime } = require('luxon');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = 'sua_chave_secreta';

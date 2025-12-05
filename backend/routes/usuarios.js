@@ -3,6 +3,7 @@ const router = express.Router();
 const dbManager = require('../db/db_manager');
 
 router.post('/cadastro', async (req, res) => {
+      console.log('Recebi cadastro:', req.body); // log para cadastro
     const { nome, email, senha } = req.body;
 
     if (!nome || !email || !senha) {
