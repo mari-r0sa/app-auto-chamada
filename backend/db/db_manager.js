@@ -19,15 +19,15 @@ const pool = mysql.createPool({
 const ZONA_HORARIO = 'America/Sao_Paulo';
 
 const CONFIG_HORARIOS = [
-    { rodada: 1, hora_inicio: "12:00", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 2, hora_inicio: "13:05", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 3, hora_inicio: "15:30", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 4, hora_inicio: "16:35", duracao_minutos: 10, tolerancia_minutos: 5 }
+    // { rodada: 1, hora_inicio: "12:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 2, hora_inicio: "13:05", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 3, hora_inicio: "15:30", duracao_minutos: 10, tolerancia_minutos: 5 },
+    // { rodada: 4, hora_inicio: "16:35", duracao_minutos: 10, tolerancia_minutos: 5 }
     
-    // { rodada: 1, hora_inicio: "19:15", duracao_minutos: 10, tolerancia_minutos: 5 },
-    // { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
-    // { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
-    // { rodada: 4, hora_inicio: "21:30", duracao_minutos: 10, tolerancia_minutos: 5 }
+    { rodada: 1, hora_inicio: "19:15", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 4, hora_inicio: "21:30", duracao_minutos: 10, tolerancia_minutos: 5 }
 ];
 
 const dbManager = {
