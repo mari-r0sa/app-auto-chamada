@@ -83,8 +83,8 @@ router.post('/presencas', async (req, res) => {
         const LNG_FACULDADE = -48.8504338;
 
         // // Coords minha casa - TESTE
-        // const LAT_FACULDADE = -26.256950;
-        // const LNG_FACULDADE = -48.847300;
+        // const LAT_FACULDADE = -26.2609168;
+        // const LNG_FACULDADE = -48.8499831;
 
         // Distancia maxima permitida para validar presenca
         const RAIO_MAXIMO_METROS = 150;

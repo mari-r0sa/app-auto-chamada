@@ -18,7 +18,9 @@ class CsvServiceImpl implements CsvServiceBase {
     String nomeArquivo,
   ) async {
     final csv = _converterParaCSV(registros);
-    final bytes = Uint8List.fromList(utf8.encode(csv));
+    final bom = [0xEF, 0xBB, 0xBF];
+    final csvBytes = utf8.encode(csv);
+    final bytes = Uint8List.fromList([...bom, ...csvBytes]);
     return _salvarLocal(bytes, "$nomeArquivo.csv");
   }
 
@@ -32,7 +34,10 @@ class CsvServiceImpl implements CsvServiceBase {
     csv.writeln(headers.join(";"));
 
     for (var item in dados) {
-      csv.writeln(headers.map((h) => item[h].toString()).join(";"));
+      csv.writeln(headers.map((h) {
+        final value = item[h].toString().replaceAll('"', '""');
+        return '"$value"';
+      }).join(";"));
     }
 
     return csv.toString();
@@ -40,17 +45,14 @@ class CsvServiceImpl implements CsvServiceBase {
 
   /// Salva o arquivo na pasta Downloads e tenta abrir.
   Future<String> _salvarLocal(Uint8List bytes, String filename) async {
-    final dir = await getDownloadsDirectory();
-
-    if (dir == null) {
-      throw Exception("Não foi possível acessar a pasta Downloads.");
-    }
+    final dir = await getApplicationDocumentsDirectory();
 
     final path = "${dir.path}/$filename";
     final file = File(path);
 
     await file.writeAsBytes(bytes);
 
+    // abre com qualquer app que suporte CSV
     await OpenFilex.open(path);
 
     return path;

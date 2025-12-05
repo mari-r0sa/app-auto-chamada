@@ -10,7 +10,7 @@ class ApiService {
           ? "10.0.2.2"
           : "localhost";
 
-  static final String baseUrl = "http://SEU_IP:3000/api";
+  static final String baseUrl = "http://192.168.1.101:3000/api";
 
   // -------------------------
   // AUTH HEADERS
