@@ -23,55 +23,34 @@ app.listen(PORT, '0.0.0.0', () => {
 // Rodando a cada minuto
 cron.schedule('* * * * *', async () => {
     try {
-        console.log("[Job] Verificando chamadas ativas...");
-
-        const [chamadas] = await dbManager.pool.query(
-            "SELECT id, data_hora, rodada FROM chamada WHERE status = 'ATIVA'"
-        );
-
+        console.log('[Job] Verificando chamadas expiradas...');
         const agora = DateTime.now().setZone(ZONA_HORARIO);
 
-        for (const chamada of chamadas) {
-            const config = CONFIG_HORARIOS.find(c => c.rodada === chamada.rodada);
-            if (!config) continue;
+        const [chamadasHoje] = await dbManager.pool.query(
+        `SELECT id, rodada, data_hora FROM chamada
+        WHERE DATE(data_hora) = CURDATE()
+        AND status = 'ATIVA'`
+        );
 
-            const dataHoraInicio = DateTime.fromSQL(chamada.data_hora).setZone(ZONA_HORARIO);
-            const dataHoraFim = dataHoraInicio.plus({ minutes: config.duracao_minutos });
+        for (const chamada of chamadasHoje) {
+        const config = dbManager.getConfigHorarios().find(c => c.rodada === chamada.rodada);
+        if (!config) continue;
 
-            // Se a chamada já passou do horário de fim, finaliza
-            if (agora > dataHoraFim) {
-                // 1. Finaliza a chamada
-                await dbManager.pool.query(
-                    "UPDATE chamada SET status = 'FINALIZADA' WHERE id = ?",
-                    [chamada.id]
-                );
+        const dataHoraInicio = DateTime.fromSQL(chamada.data_hora).setZone(ZONA_HORARIO);
 
-                // 2. Registra faltas automaticamente para alunos sem registro
-                const [alunos] = await dbManager.pool.query(
-                    `SELECT id FROM usuario WHERE tipo = 2
-                    AND id NOT IN (SELECT aluno FROM aluno_chamada WHERE chamada = ?)`,
-                    [chamada.id]
-                );
+        const dataHoraFim = dataHoraInicio.plus({ 
+            minutes: config.duracao_minutos + config.tolerancia_minutos 
+        });
 
-                for (const aluno of alunos) {
-                    const [presencaRows] = await dbManager.pool.query(
-                        "SELECT id FROM presenca WHERE descricao = 'Faltou'"
-                    );
-                    if (presencaRows.length === 0) continue;
-
-                    const presencaId = presencaRows[0].id;
-
-                    await dbManager.pool.query(
-                        "INSERT INTO aluno_chamada (aluno, chamada, presenca, obs) VALUES (?, ?, ?, ?)",
-                        [aluno.id, chamada.id, presencaId, "Falta registrada automaticamente"]
-                    );
-                }
-
-                console.log(`[Job] Chamada ${chamada.id} finalizada e faltas registradas.`);
-            }
+        if (agora > dataHoraFim) {
+            console.log(`[Job] Finalizando chamada ID ${chamada.id}...`);
+            await dbManager.finalizarChamada(chamada.id);
+            console.log(`[Job] Chamada ID ${chamada.id} finalizada.`);
+        }
         }
 
+        console.log('[Job] Concluído.');
     } catch (err) {
-        console.error("[Job] Erro ao processar chamadas:", err);
+        console.error('[Job] Erro ao processar chamadas:', err);
     }
 });

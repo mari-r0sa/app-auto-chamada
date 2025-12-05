@@ -1,4 +1,2 @@
 ﻿aluno;data;presenca;observacoes
-"teste";"05/12/2025 10:30";"Presente";"Presença registrada com sucesso."
-"teste";"05/12/2025 09:40";"Presente";"Presença registrada com sucesso."
-"teste";"05/12/2025 01:45";"Presente";"Presença registrada com sucesso."
+"teste";"Invalid DateTime";"Presente";"Presença registrada com sucesso."

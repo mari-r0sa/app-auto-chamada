@@ -12,16 +12,18 @@ const pool = mysql.createPool({
     database: 'auto_chamada',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    charset: 'utf8mb4'
 });
 
 const ZONA_HORARIO = 'America/Sao_Paulo';
 
 const CONFIG_HORARIOS = [
-    { rodada: 1, hora_inicio: "08:00", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 2, hora_inicio: "10:05", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 3, hora_inicio: "10:30", duracao_minutos: 10, tolerancia_minutos: 5 },
-    { rodada: 4, hora_inicio: "11:40", duracao_minutos: 10, tolerancia_minutos: 5 }
+    { rodada: 1, hora_inicio: "12:00", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 2, hora_inicio: "13:05", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 3, hora_inicio: "15:30", duracao_minutos: 10, tolerancia_minutos: 5 },
+    { rodada: 4, hora_inicio: "16:35", duracao_minutos: 10, tolerancia_minutos: 5 }
+    
     // { rodada: 1, hora_inicio: "19:15", duracao_minutos: 10, tolerancia_minutos: 5 },
     // { rodada: 2, hora_inicio: "20:00", duracao_minutos: 10, tolerancia_minutos: 5 },
     // { rodada: 3, hora_inicio: "20:45", duracao_minutos: 10, tolerancia_minutos: 5 },
@@ -31,56 +33,28 @@ const CONFIG_HORARIOS = [
 const dbManager = {
     getConfigHorarios: () => CONFIG_HORARIOS,
 
-    // USUARIOS
+    // ----------------------
+    // USUÁRIOS
+    // ----------------------
     async getAlunos() {
         const [rows] = await pool.query("SELECT id, nome FROM usuario WHERE tipo = 2");
         return rows;
     },
 
     async loginUsuario(email, senha) {
-        const conn = await pool.getConnection();
         console.log("DEBUG LOGIN USER:", email);
 
         try {
-            const [rows] = await conn.query(
-                "SELECT * FROM usuario WHERE email = ?",
-                [email]
-            );
-
-            if (rows.length === 0) {
-                console.log("LOGIN: usuário não encontrado para email:", email);
-                return null;
-            }
+            const [rows] = await pool.query("SELECT * FROM usuario WHERE email = ?", [email]);
+            if (rows.length === 0) return null;
 
             const user = rows[0];
-            console.log("USER FOUND:", user);
+            if (!user.senha) return null;
 
-            // Segurança: verifique se a coluna de senha existe
-            if (!user.senha) {
-                console.error("LOGIN: usuário encontrado sem hash de senha (user.senha vazio)");
-                return null;
-            }
+            const senhaCorreta = await bcrypt.compare(senha, user.senha);
+            if (!senhaCorreta) return null;
 
-            // Verificar senha (compare com a coluna correta 'senha')
-            let senhaCorreta = false;
-            try {
-                senhaCorreta = await bcrypt.compare(senha, user.senha);
-            } catch (err) {
-                console.error("Erro ao comparar senha:", err);
-                return null;
-            }
-
-            if (!senhaCorreta) {
-                console.log("LOGIN: senha incorreta para:", email);
-                return null;
-            }
-
-            // Gerar token usando a constante JWT_SECRET (ou altere para process.env se preferir)
-            const token = jwt.sign(
-                { id: user.id, tipo: user.tipo },
-                JWT_SECRET, // <--- use a constante definida no topo
-                { expiresIn: "12h" }
-            );
+            const token = jwt.sign({ id: user.id, tipo: user.tipo }, JWT_SECRET, { expiresIn: "12h" });
 
             return {
                 token,
@@ -91,21 +65,16 @@ const dbManager = {
                     tipo: user.tipo
                 }
             };
-
         } catch (err) {
             console.error("Erro interno em loginUsuario:", err);
-            throw err; // propaga para a rota exibir 500 (com log)
-        } finally {
-            conn.release();
+            return null;
         }
     },
 
     async cadastrarAluno(nome, email, senha) {
-        const [rows] = await pool.query(
-            "SELECT id FROM usuario WHERE email = ?",
-            [email]
-        );
+        const [rows] = await pool.query("SELECT id FROM usuario WHERE email = ?", [email]);
         if (rows.length > 0) return { error: "E-mail já cadastrado." };
+
         const hashSenha = await bcrypt.hash(senha, 10);
         const [result] = await pool.query(
             "INSERT INTO usuario (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
@@ -114,7 +83,9 @@ const dbManager = {
         return { id: result.insertId, nome, email };
     },
 
-    // CHAMADA
+    // ----------------------
+    // CHAMADAS
+    // ----------------------
     async iniciarNovaChamada(rodadaNum, duracaoMinutos, horaInicioString) {
         const agora = DateTime.now().setZone(ZONA_HORARIO);
         const [h, m] = horaInicioString.split(':').map(Number);
@@ -124,9 +95,8 @@ const dbManager = {
             "INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", 
             [dataHoraInicio.toFormat("yyyy-MM-dd HH:mm"), rodadaNum]
         );
-        
-        const dataHoraFim = dataHoraInicio.plus({ minutes: duracaoMinutos });
 
+        const dataHoraFim = dataHoraInicio.plus({ minutes: duracaoMinutos });
         return {
             id: result.insertId,
             rodada: rodadaNum,
@@ -136,148 +106,83 @@ const dbManager = {
         };
     },
 
-    async registrarFaltasAutomaticas(idChamada) {
-        // 1. Busca chamada
-        const chamada = await this.getChamadaById(idChamada);
-        if (!chamada) throw new Error("Chamada não encontrada");
-
-        // 2. Lista de alunos (tipo = 2)
-        const alunos = await this.getAlunos();
-
-        // 3. Presenças já registradas
-        const [rows] = await pool.query(
-            "SELECT aluno FROM aluno_chamada WHERE chamada = ?",
-            [idChamada]
-        );
-        const alunosPresentes = rows.map(r => r.aluno);
-
-        // 4. Filtra faltosos
-        const faltosos = alunos.filter(a => !alunosPresentes.includes(a.id));
-
-        // 5. Registra faltas
-        for (const aluno of faltosos) {
-            await this.registrarPresenca(
-                aluno.id,
-                idChamada,
-                "Faltou",
-                "Não registrou presença até o fim da chamada"
-            );
-        }
-
-        return { qtdFaltosos: faltosos.length };
-    },
-
-    async finalizarChamada(idChamada) {
-        await this.registrarFaltasAutomaticas(idChamada);
-
-        await pool.query(
-            "UPDATE chamada SET status = 'FINALIZADA' WHERE id = ?",
-            [idChamada]
-        );
-
-        return { idChamada, status: "FINALIZADA" };
-    },
-
     async getChamadaById(chamadaId) {
-        const [rows] = await pool.query(
-            "SELECT id, data_hora, rodada FROM chamada WHERE id = ?", 
-            [chamadaId]
-        );
+        const [rows] = await pool.query("SELECT id, data_hora, rodada FROM chamada WHERE id = ?", [chamadaId]);
         if (rows.length === 0) return null;
-        const chamada = rows[0]; 
+
+        const chamada = rows[0];
         const config = CONFIG_HORARIOS.find(c => c.rodada === chamada.rodada);
-        const duracao = config ? config.duracao_minutos : 10;
+        const duracaoTotal = (config?.duracao_minutos || 10) + (config?.tolerancia_minutos || 0);
         const dataHoraInicio = DateTime.fromSQL(chamada.data_hora).setZone(ZONA_HORARIO);
-        const dataHoraFim = dataHoraInicio.plus({ minutes: duracao });
-        return { ...chamada, data_hora_fim: dataHoraFim };
+        const dataHoraFim = dataHoraInicio.plus({ minutes: duracaoTotal });
+
+        return { ...chamada, data_hora_inicio: dataHoraInicio, data_hora_fim: dataHoraFim };
     },
 
     async getChamadaAtivaPorRodada(horaInicioString) {
         const config = CONFIG_HORARIOS.find(c => c.hora_inicio === horaInicioString);
-        if (!config) {
-            console.warn(`Nenhuma config encontrada para a hora: ${horaInicioString}`);
-            return undefined;
-        }
-        
+        if (!config) return undefined;
+
         const rodadaNum = config.rodada;
         const agora = DateTime.now().setZone(ZONA_HORARIO);
 
-        // Tenta buscar uma chamada JÁ CRIADA para esta rodada hoje
         const hojeInicio = agora.startOf('day').toSQL();
         const hojeFim = agora.endOf('day').toSQL();
 
         const [rows] = await pool.query(
             `SELECT id, data_hora, rodada FROM chamada
-            WHERE rodada = ?
-            AND data_hora BETWEEN ? AND ?
-            ORDER BY data_hora DESC
-            LIMIT 1`,
+             WHERE rodada = ? AND data_hora BETWEEN ? AND ?
+             ORDER BY data_hora DESC LIMIT 1`,
             [rodadaNum, hojeInicio, hojeFim]
         );
-        
+
         if (rows.length > 0) {
             const chamada = rows[0];
             const dataHoraInicio = DateTime.fromSQL(chamada.data_hora).setZone(ZONA_HORARIO);
-            const dataHoraFim = dataHoraInicio.plus({ minutes: config.duracao_minutos });
-
-            if (agora > dataHoraFim) {
-                console.log(`Chamada ID ${chamada.id} encontrada, mas expirada.`);
-                return undefined; // Expirada
-            }
-            // Retorna a chamada existente
-            return {
-                id: chamada.id,
-                data_hora_fim: dataHoraFim.toISO() 
-            };
+            const dataHoraFim = dataHoraInicio.plus({ minutes: config.duracao_minutos + config.tolerancia_minutos });
+            if (agora > dataHoraFim) return undefined;
+            return { id: chamada.id, data_hora_inicio: dataHoraInicio.toISO(), data_hora_fim: dataHoraFim.toISO() };
         }
 
-        // CHAMADA NÃO EXISTE
-        // Verificar se estamos na janela de tempo para criá-la.
-        
+        // Cria nova chamada se estiver dentro da janela
         const [h, m] = config.hora_inicio.split(':').map(Number);
         const horaInicioHoje = agora.set({ hour: h, minute: m, second: 0, millisecond: 0 });
-        const horaFimTotal = horaInicioHoje.plus({ minutes: config.duracao_minutos });
-
-        // Verifica se 'agora' está dentro da janela
+        const horaFimTotal = horaInicioHoje.plus({ minutes: config.duracao_minutos + config.tolerancia_minutos });
         if (agora >= horaInicioHoje && agora <= horaFimTotal) {
-            // Se sim, cria a chamada no banco
             const dataHoraInicioSQL = horaInicioHoje.toFormat("yyyy-MM-dd HH:mm");
-            
-            const [result] = await pool.query(
-                "INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", 
-                [dataHoraInicioSQL, rodadaNum]
-            );
-
-            // Retorna a chamada recém-criada
-            return {
-                id: result.insertId,
-                data_hora_fim: horaFimTotal.toISO() 
-            };
+            const [result] = await pool.query("INSERT INTO chamada (data_hora, rodada) VALUES (?, ?)", [dataHoraInicioSQL, rodadaNum]);
+            return { id: result.insertId, data_hora_inicio: horaInicioHoje.toISO(), data_hora_fim: horaFimTotal.toISO() };
         }
 
-        // --- JANELA AINDA NÃO ABRIU OU JÁ PASSOU ---
-        console.warn(`Tentativa de acesso fora da janela para ${horaInicioString}.`);
         return undefined;
     },
 
-    async getPresencasHoje(alunoId) {
-        const hojeInicio = DateTime.now().setZone(ZONA_HORARIO).startOf('day').toSQL();
-        const hojeFim = DateTime.now().setZone(ZONA_HORARIO).endOf('day').toSQL();
-        const [rows] = await pool.query(
-            `SELECT c.rodada, p.descricao as status_presenca
-            FROM aluno_chamada ac
-            JOIN chamada c ON ac.chamada = c.id
-            JOIN presenca p ON ac.presenca = p.id
-            WHERE ac.aluno = ? AND c.data_hora BETWEEN ? AND ?`,
-            [alunoId, hojeInicio, hojeFim]
-        );
-        return rows;
+    async finalizarChamada(idChamada) {
+        await this.registrarFaltasAutomaticas(idChamada);
+        await pool.query("UPDATE chamada SET status = 'FINALIZADA' WHERE id = ?", [idChamada]);
+        return { idChamada, status: "FINALIZADA" };
+    },
+
+    async registrarFaltasAutomaticas(idChamada) {
+        const chamada = await this.getChamadaById(idChamada);
+        if (!chamada) throw new Error("Chamada não encontrada");
+
+        const alunos = await this.getAlunos();
+        const [rows] = await pool.query("SELECT aluno FROM aluno_chamada WHERE chamada = ?", [idChamada]);
+        const alunosPresentes = rows.map(r => r.aluno);
+
+        const faltosos = alunos.filter(a => !alunosPresentes.includes(a.id));
+        for (const aluno of faltosos) {
+            await this.registrarPresenca(aluno.id, idChamada, "Faltou", "Não registrou presença até o fim da chamada");
+        }
+        return { qtdFaltosos: faltosos.length };
     },
 
     async registrarPresenca(alunoId, chamadaId, statusDesc, obs = "") {
         const [statusRows] = await pool.query("SELECT id FROM presenca WHERE descricao = ?", [statusDesc]);
         if (statusRows.length === 0) return { error: "Status de presença inválido." };
         const presencaId = statusRows[0].id;
+
         try {
             const [result] = await pool.query(
                 "INSERT INTO aluno_chamada (aluno, chamada, presenca, obs) VALUES (?, ?, ?, ?)",
@@ -285,57 +190,49 @@ const dbManager = {
             );
             return { id_registro: result.insertId, user_id: alunoId, id_chamada: chamadaId, status_presenca: statusDesc };
         } catch (err) {
-            if (err.code === 'ER_DUP_ENTRY') {
-                return { error: "Aluno já registrou presença nesta rodada." };
-            }
+            if (err.code === 'ER_DUP_ENTRY') return { error: "Aluno já registrou presença nesta rodada." };
             throw err;
         }
     },
 
-    // RELATORIOS
+    // ----------------------
+    // RELATÓRIOS
+    // ----------------------
+    async getPresencasHoje(alunoId) {
+        const hojeInicio = DateTime.now().setZone(ZONA_HORARIO).startOf('day').toSQL();
+        const hojeFim = DateTime.now().setZone(ZONA_HORARIO).endOf('day').toSQL();
+
+        const [rows] = await pool.query(
+            `SELECT c.rodada, p.descricao as status_presenca
+             FROM aluno_chamada ac
+             JOIN chamada c ON ac.chamada = c.id
+             JOIN presenca p ON ac.presenca = p.id
+             WHERE ac.aluno = ? AND c.data_hora BETWEEN ? AND ?`,
+            [alunoId, hojeInicio, hojeFim]
+        );
+
+        return rows.map(r => ({
+            rodada: r.rodada,
+            status_presenca: r.status_presenca
+        }));
+    },
+
     async getRelatorioPorAluno(alunoId) {
         const [rows] = await pool.query(
             `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
-            FROM aluno_chamada ac
-            JOIN usuario u ON ac.aluno = u.id
-            JOIN chamada c ON ac.chamada = c.id
-            JOIN presenca p ON ac.presenca = p.id
-            WHERE ac.aluno = ?
-            ORDER BY c.data_hora DESC`,
+             FROM aluno_chamada ac
+             JOIN usuario u ON ac.aluno = u.id
+             JOIN chamada c ON ac.chamada = c.id
+             JOIN presenca p ON ac.presenca = p.id
+             WHERE ac.aluno = ?
+             ORDER BY c.data_hora DESC`,
             [alunoId]
-        );
-
-        return rows.map(r => {
-            const data = DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO);
-
-            return {
-                aluno: r.aluno,
-                data: data.toFormat("dd/MM/yyyy HH:mm"),
-                presenca: r.presenca,
-                observacoes: r.obs || ""
-            };
-        });
-    },
-
-   async getRelatorioPorData(dataString) {
-        const inicio = DateTime.fromISO(dataString).setZone(ZONA_HORARIO).startOf("day").toSQL();
-        const fim = DateTime.fromISO(dataString).setZone(ZONA_HORARIO).endOf("day").toSQL();
-
-        const [rows] = await pool.query(
-            `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
-            FROM aluno_chamada ac
-            JOIN usuario u ON ac.aluno = u.id
-            JOIN chamada c ON ac.chamada = c.id
-            JOIN presenca p ON ac.presenca = p.id
-            WHERE c.data_hora BETWEEN ? AND ?
-            ORDER BY c.data_hora DESC, u.nome ASC`,
-            [inicio, fim]
         );
 
         return rows.map(r => ({
             aluno: r.aluno,
-            data: DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
-            presenca: r.presenca,
+            data: DateTime.fromSQL(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
+            presenca: r.presenca || "",
             observacoes: r.obs || ""
         }));
     },
@@ -346,22 +243,48 @@ const dbManager = {
 
         const [rows] = await pool.query(
             `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
-            FROM aluno_chamada ac
-            JOIN usuario u ON ac.aluno = u.id
-            JOIN chamada c ON ac.chamada = c.id
-            JOIN presenca p ON ac.presenca = p.id
-            WHERE c.data_hora BETWEEN ? AND ?
-            ORDER BY c.data_hora DESC, u.nome ASC`,
+             FROM aluno_chamada ac
+             JOIN usuario u ON ac.aluno = u.id
+             JOIN chamada c ON ac.chamada = c.id
+             JOIN presenca p ON ac.presenca = p.id
+             WHERE c.data_hora BETWEEN ? AND ?
+             ORDER BY c.data_hora DESC`,
             [hojeInicio, hojeFim]
         );
 
         return rows.map(r => ({
             aluno: r.aluno,
-            data: DateTime.fromJSDate(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
-            presenca: r.presenca,
+            data: DateTime.fromSQL(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
+            presenca: r.presenca || "",
+            observacoes: r.obs || ""
+        }));
+    },
+
+    async getRelatorioPorData(dataInicio, dataFim) {
+        const inicioSQL = DateTime.fromJSDate(dataInicio).setZone(ZONA_HORARIO).toSQL();
+        const fimSQL = DateTime.fromJSDate(dataFim).setZone(ZONA_HORARIO).toSQL();
+
+        const [rows] = await pool.query(
+            `SELECT u.nome AS aluno, c.data_hora, p.descricao AS presenca, ac.obs
+             FROM aluno_chamada ac
+             JOIN usuario u ON ac.aluno = u.id
+             JOIN chamada c ON ac.chamada = c.id
+             JOIN presenca p ON ac.presenca = p.id
+             WHERE c.data_hora BETWEEN ? AND ?
+             ORDER BY c.data_hora DESC`,
+            [inicioSQL, fimSQL]
+        );
+
+        return rows.map(r => ({
+            aluno: r.aluno,
+            data: DateTime.fromSQL(r.data_hora).setZone(ZONA_HORARIO).toFormat("dd/MM/yyyy HH:mm"),
+            presenca: r.presenca || "",
             observacoes: r.obs || ""
         }));
     }
 };
 
-module.exports = dbManager;
+module.exports = {
+    ...dbManager,
+    pool
+};

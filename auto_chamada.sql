@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS usuario (
 CREATE TABLE IF NOT EXISTS chamada (
     id INT PRIMARY KEY AUTO_INCREMENT,
     data_hora DATETIME NOT NULL,
+    status VARCHAR(10) NOT NULL,
     rodada INT NOT NULL -- <<< COLUNA ADICIONADA (essencial para o db_manager.js)
 );
 
@@ -47,3 +48,7 @@ CREATE TABLE IF NOT EXISTS aluno_chamada (
 -- Insere dados básicos se não existirem
 INSERT IGNORE INTO tipo (id, tipo) VALUES (1, 'Professor'), (2, 'Aluno');
 INSERT IGNORE INTO presenca (id, descricao) VALUES (1, 'Presente'), (2, 'Faltou'), (3, 'Atrasado');
+
+-- Corrigir encoding
+ALTER TABLE aluno_chamada CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ALTER TABLE presenca CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
