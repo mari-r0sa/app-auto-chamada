@@ -30,7 +30,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     setState(() {
       _userType = (typeInt == 1) ? "Aluno" : "Professor";
     });
-  } 
+  }
 
   Future<int> _getAlunoId() async {
     final prefs = await SharedPreferences.getInstance();
@@ -41,7 +41,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     try {
       final registros = await ApiService.getRelatorioAluno(alunoId);
 
-      final caminho = await CsvService.gerarCSV(
+      final caminho = await gerarCSV(
         List<Map<String, dynamic>>.from(registros),
         "relatorio_aluno_$alunoId",
       );
@@ -61,7 +61,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     try {
       final registros = await ApiService.getRelatorioHoje();
 
-      final caminho = await CsvService.gerarCSV(
+      final caminho = await gerarCSV(
         List<Map<String, dynamic>>.from(registros),
         "relatorio_hoje",
       );
@@ -92,7 +92,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
     try {
       final registros = await ApiService.getRelatorioPorData(data);
 
-      final caminho = await CsvService.gerarCSV(
+      final caminho = await gerarCSV(
         List<Map<String, dynamic>>.from(registros),
         "relatorio_$data",
       );
